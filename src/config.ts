@@ -15,7 +15,7 @@ const BaseConfig = z.object({
   searchLimit: z.number(),
 })
 
-export type Config = Schemastery.TypeT<typeof BaseConfig>
+export type Config = { [K in keyof Schemastery.TypeT<typeof BaseConfig>]: Schemastery.TypeT<typeof BaseConfig>[K] }
 
 export const ConfigSchema = Object.assign(BaseConfig, {
   parse(value: Config): Config {
