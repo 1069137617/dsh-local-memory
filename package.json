@@ -1,0 +1,64 @@
+{
+  "name": "dsh-local-memory",
+  "version": "0.1.0",
+  "description": "独立本地记忆插件：JSONL 记忆条目、每轮 runtime-context 注入、local_memory_search/local_memory_remember 工具、设置面板管理页。不依赖 Mnemon。",
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "memory", "local-memory", "runtime-context"],
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "" },
+  "exports": {
+    ".": { "types": "./lib/index.d.ts", "default": "./lib/index.js" },
+    "./client": { "default": "./lib/client.js" },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "README.md", "README.zh.md", "LICENSE"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-connection", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-ui-slots", "@deepseek-ai/dsh-client-locale"] }
+  },
+  "engines": { "node": ">=20" },
+  "os": ["darwin", "linux", "win32"],
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "npm run build:host && npm run build:client",
+    "build:host": "tsc -p tsconfig.json",
+    "build:client": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test",
+    "verify:install": "node scripts/verify-install.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-home-paths": ">=0.1.5-rc.1",
+    "@deepseek-ai/dsh-settings": ">=0.1.5-rc.1",
+    "@deepseek-ai/dsh-system-prompt": ">=0.1.5-rc.1",
+    "@deepseek-ai/dsh-tools": ">=0.1.5-rc.1",
+    "@deepseek-ai/schemastery": ">=3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-home-paths": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-settings": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
+    "@deepseek-ai/schemastery": "3.18.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "typescript": "5.9.3"
+  },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" }
+}

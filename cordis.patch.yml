@@ -1,0 +1,7 @@
+# dsh-local-memory bundle patch: one host row over the profile.
+# The row is what makes the package visible to the Loader; the browser half
+# rides along through the package.json `dsh.client` declaration.
+# No `config:` block on purpose — defaults live in src/config.ts.
+- insert:
+    - id: local-memory
+      name: dsh-local-memory
