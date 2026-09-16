@@ -60,3 +60,24 @@ test('validateEntryText gates', () => {
   assert.throws(() => validateEntryText('x'.repeat(10), 9))
   assert.throws(() => validateEntryText('   ', 9))
 })
+
+test('add with tags:[] omits tags key in persisted JSON', () => {
+  const s = fresh()
+  s.add({ text: 'pinned', scope: 'global', tags: [] }, 'ui')
+  const line = readFileSync(join(s.dir, 'entries.jsonl'), 'utf8').trim()
+  const raw = JSON.parse(line)
+  assert.ok(!('tags' in raw), 'tags key must be absent when empty')
+  assert.ok(!('tags' in s.snapshot().entries[0]), 'in-memory entry must not carry tags either')
+})
+
+test('update sets tags then clears them back to absent', () => {
+  const s = fresh()
+  s.add({ text: 'pinned', scope: 'global' }, 'ui')
+  const id = s.snapshot().entries[0].id
+  const withTags = s.update(id, { tags: ['x'] })
+  assert.deepEqual(withTags.entries[0].tags, ['x'])
+  assert.ok('tags' in JSON.parse(readFileSync(join(s.dir, 'entries.jsonl'), 'utf8').trim()))
+  const cleared = s.update(id, { tags: [] })
+  assert.ok(!('tags' in cleared.entries[0]), 'cleared entry must not carry tags')
+  assert.ok(!('tags' in JSON.parse(readFileSync(join(s.dir, 'entries.jsonl'), 'utf8').trim())), 'cleared JSON must omit tags key')
+})
