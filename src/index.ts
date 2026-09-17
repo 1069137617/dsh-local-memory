@@ -3,10 +3,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-settings'
+// 类型侧副作用导入：加载 dsh-client-connection 的 Context augmentation，
+// 使下方 `ctx.inject(['connection'], ...)` 的 `connection` 服务有类型。
+// 运行时经 cordis.patch.yml 的 client.inject 注入宿主，非本插件运行时依赖。
+import type {} from '@deepseek-ai/dsh-client-connection'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { ConfigSchema, DEFAULTS, validateConfig, type Config } from './config.js'
 import { renderSnapshot } from './render.js'
 import { makeRememberTool, makeSearchTool } from './tools.js'
+import { createRpcHandler, RPC_CHANNEL } from './protocol.js'
 import { MemoryStore, normalizeScope } from './store.js'
 
 export const name = 'local-memory'
@@ -62,5 +67,23 @@ export function apply(ctx: Context): void {
       ctx.logger('local-memory').warn(`local-memory: snapshot registration failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`)
       throw e
     }
+  })
+
+  // 管理页 RPC（设置面板管理端）：channel '/local-memory'，endpoints 见 protocol.ts。
+  // workspaces 数据源是 store 数据派生（spec 偏差，详见 task-5-report）而非
+  // ctx.get('workspaceRegistry')——宿主 0.1.5-rc.2 公开包实证不存在该服务，
+  // 数据派生同样满足 scope 选择器"列出已有工作区"的用途且始终非降级。
+  ctx.inject(['connection'], ({ connection }) => {
+    ctx.effect(async () => {
+      const workspaces = (): string[] => {
+        const seen = new Set<string>()
+        for (const e of store.snapshot().entries) {
+          if (e.scope !== 'global') seen.add(e.scope)
+        }
+        return [...seen]
+      }
+      const handler = createRpcHandler({ store, cfg: cfgRef, workspaces })
+      return connection.rpc.handle(RPC_CHANNEL, (endpoint, payload) => handler(endpoint, payload))
+    }, 'local-memory: rpc')
   })
 }
