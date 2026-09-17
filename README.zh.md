@@ -10,12 +10,28 @@
 
 ## 安装（web profile）
 
-1. 在 profile 的 `package.json` 的 dependencies 加：
-   ```json
-   "dsh-local-memory": "link:<本仓库路径>"
-   ```
-2. 在 `dsh.profile.bundles` 追加 `"dsh-local-memory"`（宿主会读取其 `dsh.bundle.patch` 生成 bundle 注入清单）。
-3. 重启 `dsh web` —— bundles 只在启动时读取。
+### npm 安装（推荐）
+
+```sh
+npm install dsh-local-memory
+```
+
+或在 profile 的 `package.json` 的 dependencies 加：
+
+```json
+"dsh-local-memory": "^0.2.0"
+```
+
+### 源码安装（开发模式）
+
+```json
+"dsh-local-memory": "link:<本仓库路径>"
+```
+
+### 两种方式装完后
+
+1. 在 `dsh.profile.bundles` 追加 `"dsh-local-memory"`（宿主会读取其 `dsh.bundle.patch` 生成 bundle 注入清单）。
+2. 重启 `dsh web` —— bundles 只在启动时读取。
 
 ## 数据位置与格式
 

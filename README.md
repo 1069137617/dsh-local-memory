@@ -10,12 +10,28 @@ A **DSH** plugin that mounts a persistent, editable local memory into every sess
 
 ## Install (web profile)
 
-1. Add to the profile's `package.json` dependencies:
-   ```json
-   "dsh-local-memory": "link:<repo path>"
-   ```
-2. Append `"dsh-local-memory"` to `dsh.profile.bundles` (the host reads its `dsh.bundle.patch` to compose the bundle injection list).
-3. Restart `dsh web` — bundles are read at boot only.
+### From npm (recommended)
+
+```sh
+npm install dsh-local-memory
+```
+
+Or add to the profile's `package.json` dependencies:
+
+```json
+"dsh-local-memory": "^0.2.0"
+```
+
+### From source (development)
+
+```json
+"dsh-local-memory": "link:<repo path>"
+```
+
+### Then (both routes)
+
+1. Append `"dsh-local-memory"` to `dsh.profile.bundles` (the host reads its `dsh.bundle.patch` to compose the bundle injection list).
+2. Restart `dsh web` — bundles are read at boot only.
 
 ## Data location & format
 

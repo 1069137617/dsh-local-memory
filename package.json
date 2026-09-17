@@ -1,13 +1,15 @@
 {
   "name": "dsh-local-memory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "独立本地记忆插件：JSONL 记忆条目、每轮 runtime-context 注入、local_memory_search/local_memory_remember 工具、设置面板管理页。不依赖 Mnemon。",
   "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "memory", "local-memory", "runtime-context"],
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "license": "MIT",
-  "repository": { "type": "git", "url": "" },
+  "repository": { "type": "git", "url": "git+https://github.com/1069137617/dsh-local-memory.git" },
+  "homepage": "https://github.com/1069137617/dsh-local-memory#readme",
+  "bugs": { "url": "https://github.com/1069137617/dsh-local-memory/issues" },
   "exports": {
     ".": { "types": "./lib/index.d.ts", "default": "./lib/index.js" },
     "./client": { "default": "./lib/client.js" },
