@@ -18,12 +18,14 @@ const CSS = `
 .dshlm-setrow-desc { color: var(--dsw-alias-label-tertiary, #888); font-size: 12px; margin-top: 2px; }
 .dshlm-setrow-control { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
 /* 滑动开关：appearance:none 的 checkbox，胶囊轨道 + 圆形滑块（::after）。
-   关闭态轨道取 bg-layer-3、滑块取 label-tertiary；开启态轨道品牌色、滑块白色。亮暗主题自适应。 */
+   本宿主主题的品牌色是单色反转体系（dark: brand-primary≈近白, light: ≈近黑），
+   实证（dsh-client-ui-theme/lib/client.js）：开启态轨道=brand-primary、滑块=label-primary-inverted
+   （dark 白轨黑钮 / light 黑轨白钮）；关闭态轨道=bg-layer-3、滑块=label-primary。两主题均高对比。 */
 .dshlm-toggle { appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; width: 38px; height: 22px; margin: 0; border-radius: 999px; background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,.28)); border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); cursor: pointer; transition: background .16s ease, border-color .16s ease; }
-.dshlm-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--dsw-alias-label-tertiary, #999); transition: transform .16s ease, background .16s ease; }
+.dshlm-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--dsw-alias-label-primary, #ddd); transition: transform .16s ease, background .16s ease; }
 .dshlm-toggle:checked { background: var(--dsw-alias-brand-primary, #4c6ef5); border-color: var(--dsw-alias-brand-primary, #4c6ef5); }
-.dshlm-toggle:checked::after { transform: translateX(16px); background: #fff; }
-.dshlm-toggle:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #4c6ef5); outline-offset: 2px; }
+.dshlm-toggle:checked::after { transform: translateX(16px); background: var(--dsw-alias-label-primary-inverted, #fff); }
+.dshlm-toggle:focus-visible { outline: 2px solid var(--dsw-alias-label-primary, #999); outline-offset: 2px; }
 .dshlm-toggle:disabled { opacity: .5; cursor: default; }
 .dshlm-num { width: 96px; box-sizing: border-box; text-align: right; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); background: var(--dsw-alias-bg-layer-2, transparent); color: inherit; font: inherit; }
 .dshlm-num:focus { outline: none; border-color: var(--dsw-alias-brand-primary, #4c6ef5); }
@@ -46,7 +48,7 @@ const CSS = `
 .dshlm-btn { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); background: var(--dsw-alias-bg-layer-2, transparent); color: var(--dsw-alias-label-primary, inherit); cursor: pointer; }
 .dshlm-btn:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.14)); }
 .dshlm-btn:disabled { opacity: .5; cursor: default; }
-.dshlm-primary { background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary, #4c6ef5)); border-color: transparent; color: #fff; font-weight: 600; }
+.dshlm-primary { background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary, #4c6ef5)); border-color: transparent; color: var(--dsw-alias-label-primary-inverted, #fff); font-weight: 600; }
 .dshlm-primary:hover { background: var(--dsw-alias-button-primary-hover, var(--dsw-alias-brand-primary, #4c6ef5)); }
 .dshlm-danger { color: var(--dsw-alias-state-error-primary, #e05252); }
 
