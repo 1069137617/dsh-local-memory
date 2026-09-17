@@ -41,6 +41,7 @@ const fmtTime = (iso: string): string => {
 
 const SETTING_KEYS = ['enabled', 'injectEnabled', 'injectWorkspace', 'allowAgentWrite'] as const
 const NUMBER_KEYS = ['maxInjectionChars', 'entryMaxChars', 'searchLimit'] as const
+const MODE_KEYS = ['injectMode'] as const
 
 export function MemoryPage({ settings, call, t }: Props): ReactNode {
   const face = useMemo(() => bindScope(settings), [settings])
@@ -52,7 +53,7 @@ export function MemoryPage({ settings, call, t }: Props): ReactNode {
     const base = (snapshot?.value ?? {}) as Record<string, unknown>
     const user = (snapshot?.user ?? {}) as Record<string, unknown>
     const out: Record<string, unknown> = {}
-    for (const k of [...SETTING_KEYS, ...NUMBER_KEYS]) {
+    for (const k of [...SETTING_KEYS, ...NUMBER_KEYS, ...MODE_KEYS]) {
       out[k] = user[k] !== undefined ? user[k] : base[k]
     }
     return out as Partial<Config>
@@ -178,6 +179,29 @@ export function MemoryPage({ settings, call, t }: Props): ReactNode {
             </div>
           </div>
         ))}
+        <div className="dshlm-setrow">
+          <div className="dshlm-setrow-text">
+            <div className="dshlm-setrow-label">{t('injectMode.label')}</div>
+            <div className="dshlm-setrow-desc">{t('injectMode.desc')}</div>
+          </div>
+          <div className="dshlm-setrow-control">
+            <div className="dshlm-seg" role="radiogroup" aria-label={t('injectMode.label')}>
+              {(['full', 'index'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={String(cfg.injectMode ?? 'full') === m}
+                  className={String(cfg.injectMode ?? 'full') === m ? 'dshlm-seg-btn dshlm-seg-on' : 'dshlm-seg-btn'}
+                  disabled={!cfgReady || !writable}
+                  onClick={() => field('injectMode', m)}
+                >
+                  {t(m === 'full' ? 'injectMode.full' : 'injectMode.index')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* —— 分区二：记忆条目（失败横幅只影响本区，含确切错误 + 重试） —— */}
