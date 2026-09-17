@@ -35,3 +35,15 @@ test('snapshot injection wiring: frozen constants + registration call present', 
   const src = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
   assert.ok(src.includes('systemPrompt.context('), 'src/index.ts must register the snapshot injection via systemPrompt.context(')
 })
+
+test('client half injects exactly slots+locale+connection', () => {
+  const client = readFileSync(new URL('../src/client.ts', import.meta.url), 'utf8')
+  assert.match(client, /export const inject = \['slots', 'locale', 'connection'\]/)
+  assert.match(client, /settings\.section/)
+})
+test('host half wires named seams', () => {
+  const host = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
+  assert.match(host, /local-memory:snapshot/)
+  assert.match(host, /'\/local-memory'|RPC_CHANNEL/)
+  assert.match(host, /CONTEXT_ORDER = 200/)
+})
