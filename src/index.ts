@@ -31,9 +31,12 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.tools.register(makeRememberTool(store, cfgRef)), 'local-memory: remember tool')
 
   // systemPrompt 不在静态 inject 名单（brief 冻结），用 ctx.inject 延迟到服务可用。
-  // 宿主 inject 回调可能在已 dispose 的 runtime scope 中重放（本次宿主升级实测
-  // "Runtime scope 5081 is already disposed"），两层各加 try 护栏：重放落在死 scope
-  // 上就跳过（该 scope 本就不需要注入），owning scope 上的登记不受影响。
+  // I-3 收窄：只有 disposed-scope 类错误（消息匹配 /disposed/i）才静默跳过——开发期
+  // 宿主日志里实际出现过一次 "Runtime scope 5081 is already disposed"（inject 回调在
+  // 已 dispose 的 runtime scope 上重放 mix-into），死 scope 上跳过即正确行为；这是
+  // 据一次实际报错做的防御，不是宿主文档承诺的行为。其余错误必须 warn 记录后原样
+  // 重抛，不得静默吞掉。
+  const isDisposedScope = (e: unknown): boolean => e instanceof Error && /disposed/i.test(e.message)
   ctx.inject(['systemPrompt'], ({ systemPrompt }) => {
     try {
       ctx.effect(() => {
@@ -48,8 +51,16 @@ export function apply(ctx: Context): void {
               } catch { return '' }
             },
           })
-        } catch { return () => {} }
+        } catch (e) {
+          // disposed → 死 scope 上重放，返回 no-op disposer 跳过；其余上抛交外层统一处置
+          if (isDisposedScope(e)) return () => {}
+          throw e
+        }
       }, 'local-memory: snapshot')
-    } catch { /* runtime scope 已 dispose：跳过本次 mix-into */ }
+    } catch (e) {
+      if (isDisposedScope(e)) return
+      ctx.logger('local-memory').warn(`local-memory: snapshot registration failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`)
+      throw e
+    }
   })
 }

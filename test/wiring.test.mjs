@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
+import { CONTEXT_NAME, CONTEXT_ORDER } from '../lib/index.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
@@ -26,4 +27,11 @@ test('peer floors', () => {
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-tools'], '>=0.1.5-rc.1')
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-system-prompt'], '>=0.1.5-rc.1')
   assert.equal(pkg.peerDependencies['@deepseek-ai/cordis'], '^4.0.2')
+})
+
+test('snapshot injection wiring: frozen constants + registration call present', () => {
+  assert.equal(CONTEXT_NAME, 'local-memory:snapshot')
+  assert.equal(CONTEXT_ORDER, 200)
+  const src = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
+  assert.ok(src.includes('systemPrompt.context('), 'src/index.ts must register the snapshot injection via systemPrompt.context(')
 })

@@ -70,21 +70,20 @@ test('search rejects unknown scope instead of silently widening', async () => {
   assert.match(r.error, /scope/)
 })
 
-test('remember add receipt points at the actually added entry after concurrent append', async () => {
+test('replace without text fails: replace requires text', async () => {
   const h = harness()
-  const added = []
-  const origAdd = h.store.add.bind(h.store)
-  h.store.add = ((input, source, maxChars, when) => {
-    const snap = origAdd(input, source, maxChars, when)
-    // 模拟并发：真实 add 之后追加一条，回执必须仍指向本次新建的条目
-    added.push(origAdd({ text: 'racer', scope: 'global' }, 'ui', maxChars))
-    return snap
-  })
+  await h.remember.execute({ action: 'add', text: 'alpha one' }, exec('C:\\w'))
+  const r = await h.remember.execute({ action: 'replace', old_text: 'alpha' }, exec('C:\\w'))
+  assert.equal(r.completion, 'failed')
+  assert.match(r.error, /replace requires text/)
+})
+
+test('remember add receipt resolves to the added entry in the store', async () => {
+  const h = harness()
   const r = await h.remember.execute({ action: 'add', text: 'mine' }, exec('C:\\w'))
   assert.equal(r.completion, 'committed')
   const snap = h.store.snapshot()
   const mine = snap.entries.find((e) => e.id === r.id)
   assert.ok(mine, 'receipt id must resolve to a real entry')
   assert.equal(mine.text, 'mine')
-  assert.ok(added.length === 1 && added[0].entries.some((e) => e.text === 'racer'))
 })

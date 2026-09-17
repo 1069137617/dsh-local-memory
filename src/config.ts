@@ -15,7 +15,9 @@ const BaseConfig = z.object({
   searchLimit: z.number(),
 })
 
-export type Config = { [K in keyof Schemastery.TypeT<typeof BaseConfig>]: Schemastery.TypeT<typeof BaseConfig>[K] }
+// Pick 白名单是真硬化：schemastery 的 TypeT 输出面带 `{[k:string]:any}` 交叉（Dict 索引签名），
+// mapped type `{[K in keyof T]: T[K]}` 会保留该索引签名（Task 4 评审 tsc 探针实证），Pick 精确剔除。
+export type Config = Pick<Schemastery.TypeT<typeof BaseConfig>, 'enabled' | 'injectEnabled' | 'injectWorkspace' | 'allowAgentWrite' | 'maxInjectionChars' | 'entryMaxChars' | 'searchLimit'>
 
 export const ConfigSchema = Object.assign(BaseConfig, {
   parse(value: Config): Config {
