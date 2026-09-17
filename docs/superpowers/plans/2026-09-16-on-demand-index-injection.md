@@ -135,8 +135,8 @@ test('index mode: critical stays full, normal/low become summaries', () => {
     e('l1', '短条目', { importance: 'low' }),
   ]), { ...DEFAULTS, injectMode: 'index' }, '')
   assert.match(text, /\[id:c1\]\[critical\] critical 规则全文/)
-  assert.match(text, /\[id:n1\]\[normal\]\[ftp\] 指{80}…/)          // 截 80 字 + 省略号
-  assert.match(text, /\[id:l1\]\[low\] 短条目$/)                     // ≤80 字无省略号（按行尾匹配）
+  assert.match(text, /\[id:n1\]\[normal\] \[ftp\] 指{80}…/)        // 截 80 字 + 省略号（tags 前导空格为原格式）
+  assert.match(text, /\[id:l1\]\[low\] 短条目$/m)                     // ≤80 字无省略号（/m 行尾匹配）
   assert.doesNotMatch(text, /指{81}/)                                // 全文不外泄
   assert.match(text, /index-only — call local_memory_search with ids=/)
 })

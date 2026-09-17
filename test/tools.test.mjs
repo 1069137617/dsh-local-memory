@@ -87,3 +87,52 @@ test('remember add receipt resolves to the added entry in the store', async () =
   assert.ok(mine, 'receipt id must resolve to a real entry')
   assert.equal(mine.text, 'mine')
 })
+
+// ---- 按需索引展开（spec 2026-09-16）----
+
+test('search ids: exact fetch in given order, bypasses scope filter', async () => {
+  const h = harness()
+  const a = await h.remember.execute({ action: 'add', text: 'alpha entry', scope: 'workspace' }, exec('D:\\code\\x'))
+  const b = await h.remember.execute({ action: 'add', text: 'beta entry' }, exec('D:\\code\\x'))
+  const r = await h.search.execute({ ids: [b.id, a.id], query: 'alpha' }, exec('D:\\code\\x'))
+  assert.equal(r.items.length, 2)
+  assert.deepEqual(r.items.map((i) => i.id), [b.id, a.id])   // ids 优先于 query；按传入顺序
+  assert.equal(r.items[1].text, 'alpha entry')               // 取回的是全文
+  assert.equal(r.missing, undefined)
+})
+test('search ids: missing ids reported, not an error', async () => {
+  const h = harness()
+  const a = await h.remember.execute({ action: 'add', text: 'real' }, exec('C:\\w'))
+  const r = await h.search.execute({ ids: [a.id, 'deadbeef0000'] }, exec('C:\\w'))
+  assert.equal(r.items.length, 1)
+  assert.deepEqual(r.missing, ['deadbeef0000'])
+})
+test('search ids: empty array behaves as absent (falls through to query path)', async () => {
+  const h = harness()
+  await h.remember.execute({ action: 'add', text: 'kw target' }, exec('C:\\w'))
+  const r = await h.search.execute({ ids: [], query: 'kw' }, exec('C:\\w'))
+  assert.equal(r.completion, undefined)
+  assert.equal(r.items.length, 1)
+  assert.equal(r.missing, undefined)
+})
+test('search ids: limit clips id results', async () => {
+  const h = harness()
+  const ids = []
+  for (const t of ['one', 'two', 'three']) ids.push((await h.remember.execute({ action: 'add', text: t }, exec('C:\\w'))).id)
+  const r = await h.search.execute({ ids, limit: 2 }, exec('C:\\w'))
+  assert.equal(r.items.length, 2)
+  assert.equal(r.count, 2)
+})
+test('search ids: malformed ids fail explicitly', async () => {
+  const h = harness()
+  const r1 = await h.search.execute({ ids: 'not-an-array' }, exec('C:\\w'))
+  assert.equal(r1.completion, 'failed')
+  assert.match(r1.error, /ids/)
+  const r2 = await h.search.execute({ ids: [123] }, exec('C:\\w'))
+  assert.equal(r2.completion, 'failed')
+})
+test('search ids: disabled plugin still gates', async () => {
+  const h = harness({ ...DEFAULTS, enabled: false })
+  const r = await h.search.execute({ ids: ['whatever'] }, exec('C:\\w'))
+  assert.equal(r.disabled, true)
+})

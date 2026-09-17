@@ -26,23 +26,45 @@ const jsonEntry = (e: MemoryEntry) => ({
 
 export const makeSearchTool = (store: MemoryStore, cfg: () => Config) => defineTool({
   name: 'local_memory_search',
-  description: 'Search this plugin\'s local memory store (dsh-local-memory; independent of Mnemon). Empty query lists the most recent entries. scope: "all" (default) | "global" | "workspace" (current session cwd). limit <= 32.',
+  description: 'Search this plugin\'s local memory store (dsh-local-memory; independent of Mnemon). Empty query lists the most recent entries. ids: exact fetch by entry id (from the injected snapshot index) — bypasses ranking and scope, returns full text, use this to expand index lines. scope: "all" (default) | "global" | "workspace" (current session cwd). limit <= 32.',
   parameters: {
     query: { type: 'string', description: 'Keywords; empty = recent first.' },
     scope: { type: 'string', description: 'all | global | workspace. Defaults to all.' },
     limit: { type: 'integer', description: 'Max items, 1-32.' },
+    ids: { type: 'json', description: 'string array of entry ids; exact full-text fetch in given order, bypasses ranking and scope filter. Max 32.' },
   },
   output: {
     schema: { type: 'json' },
     render: (_args, v) => [{ type: 'text', text: JSON.stringify(v, null, 2) }],
   },
   execute: async (args, exec) => {
-    const a = (args ?? {}) as { query?: string; scope?: string; limit?: number }
+    const a = (args ?? {}) as { query?: string; scope?: string; limit?: number; ids?: unknown }
     try {
       const c = cfg()
       if (!c.enabled) return { disabled: true, message: 'dsh-local-memory is disabled (Settings → 本地记忆)' }
       if (a.scope !== undefined && a.scope !== 'all' && a.scope !== 'global' && a.scope !== 'workspace') {
         return { completion: 'failed' as const, error: `unknown scope ${String(a.scope)} (all|global|workspace)` }
+      }
+      // ids 精确取回（spec 2026-09-16）：非空数组时优先于 query；作用域过滤不适用
+      // （id 是权威定位）；空数组按未提供处理；形态非法显式 failed 不静默。
+      if (a.ids !== undefined) {
+        if (!Array.isArray(a.ids) || a.ids.some((x) => typeof x !== 'string')) {
+          return { completion: 'failed' as const, error: 'ids must be an array of entry id strings' }
+        }
+        if (a.ids.length > 0) {
+          const wanted = a.ids as string[]
+          const snap = store.snapshot()
+          const limit = clipLimit(a.limit, c)
+          const picked = wanted.map((id) => snap.entries.find((e) => e.id === id))
+          const found = picked.filter((e): e is MemoryEntry => e !== undefined)
+          const missing = wanted.filter((_, i) => picked[i] === undefined)
+          return {
+            revision: snap.revision,
+            count: Math.min(found.length, limit),
+            items: found.slice(0, limit).map(jsonEntry),
+            ...(missing.length ? { missing } : {}),
+          }
+        }
       }
       const scope = a.scope ?? 'all'
       const cwd = cwdOf(exec)
