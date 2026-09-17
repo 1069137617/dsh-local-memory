@@ -60,19 +60,20 @@ const CSS = `
 .dshlm-row-actions { margin-left: auto; display: inline-flex; gap: 6px; }
 .dshlm-meta { color: var(--dsw-alias-label-tertiary, #888); font-size: 12px; }
 
-/* 徽章 */
+/* 徽章。注意：state-*-secondary 令牌是实心中间调（red-400/amber-400，图标/圆点用），
+   不能当背景（dark 主题 error-primary 同为 red-400 → 字色=底色）。底色一律用半透明 tint。 */
 .dshlm-chip { display: inline-block; font-size: 12px; border-radius: 8px; padding: 1px 8px; background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.14)); border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.22)); color: var(--dsw-alias-label-secondary, inherit); }
 .dshlm-chip-dim { color: var(--dsw-alias-label-tertiary, #888); }
-.dshlm-chip-bad { background: var(--dsw-alias-state-error-secondary, rgba(224,82,82,.16)); border-color: var(--dsw-alias-state-error-primary, rgba(224,82,82,.4)); color: var(--dsw-alias-state-error-primary, #f8a); }
-.dshlm-imp-critical { background: var(--dsw-alias-state-error-secondary, rgba(224,82,82,.16)); border-color: var(--dsw-alias-state-error-primary, rgba(224,82,82,.4)); color: var(--dsw-alias-state-error-primary, #f99); }
+.dshlm-chip-bad { background: rgba(242,90,90,.16); border-color: rgba(242,90,90,.4); color: var(--dsw-alias-state-error-primary, #f8a); }
+.dshlm-imp-critical { background: rgba(242,90,90,.16); border-color: rgba(242,90,90,.4); color: var(--dsw-alias-state-error-primary, #f99); }
 .dshlm-imp-normal { background: var(--dsw-alias-interactive-bg-hover, rgba(128,128,128,.14)); border-color: var(--dsw-alias-border-l2, rgba(128,128,128,.22)); color: var(--dsw-alias-label-secondary, inherit); }
 .dshlm-imp-low { background: transparent; border-color: var(--dsw-alias-border-l3, rgba(128,128,128,.18)); color: var(--dsw-alias-label-tertiary, #888); }
 
 /* 横幅 */
 .dshlm-banner { padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
-.dshlm-banner-warn { background: var(--dsw-alias-state-warn-secondary, rgba(255,160,0,.12)); border: 1px solid var(--dsw-alias-state-warn-primary, rgba(255,160,0,.4)); color: var(--dsw-alias-label-primary, inherit); }
+.dshlm-banner-warn { background: rgba(255,160,0,.14); border: 1px solid rgba(255,160,0,.45); color: var(--dsw-alias-label-primary, inherit); }
 .dshlm-banner-info { background: var(--dsw-alias-bg-layer-2, rgba(120,140,255,.1)); border: 1px solid var(--dsw-alias-border-l3, rgba(120,140,255,.3)); color: var(--dsw-alias-label-primary, inherit); }
-.dshlm-banner-bad { background: var(--dsw-alias-state-error-secondary, rgba(224,82,82,.14)); border: 1px solid var(--dsw-alias-state-error-primary, rgba(224,82,82,.4)); color: var(--dsw-alias-label-primary, inherit); display: flex; gap: 10px; align-items: center; justify-content: space-between; word-break: break-all; }
+.dshlm-banner-bad { background: rgba(242,90,90,.14); border: 1px solid rgba(242,90,90,.4); color: var(--dsw-alias-label-primary, inherit); display: flex; gap: 10px; align-items: center; justify-content: space-between; word-break: break-all; }
 
 /* 草稿编辑卡 */
 .dshlm-add { border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); border-radius: 10px; background: var(--dsw-alias-bg-layer-1, transparent); padding: 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
