@@ -1,5 +1,5 @@
 // src/index.ts
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-settings'
@@ -12,6 +12,7 @@ import { ConfigSchema, DEFAULTS, validateConfig, type Config } from './config.js
 import { renderSnapshot } from './render.js'
 import { makeRememberTool, makeSearchTool } from './tools.js'
 import { createRpcHandler, RPC_CHANNEL } from './protocol.js'
+import { LocalMemoryRemoteService } from './remote.js'
 import { MemoryStore, normalizeScope } from './store.js'
 
 export const name = 'local-memory'
@@ -69,21 +70,36 @@ export function apply(ctx: Context): void {
     }
   })
 
-  // 管理页 RPC（设置面板管理端）：channel '/local-memory'，endpoints 见 protocol.ts。
+  // 管理页 RPC（设置面板管理端）。两条传输并存：
+  //
+  // (a) 网关半（首选）：客户端经 POST /api/dshLocalMemory/call 进 API Gateway
+  //     ——这是宿主 0.1.5-rc.2 上唯一真正路由到插件的通道（插件自定义通道在
+  //     HTTP 面被静态服务器 405，实证链见 remote.ts 头注）。先例与接法：
+  //     mnemon plugin.ts 的 ctx.inject(['connection'], webContext => … new
+  //     MnemonRemoteService(webContext, …))。SRC 回退按活体 Service 发现，无需
+  //     严格 typert 登记；按 mnemon 同款不额外包裹 effect——Service 生命周期
+  //     由其构造所在的 cordis 上下文接管。
+  // (b) 旧通道半（保留）：connection.rpc.handle('/local-memory', …)。在会把
+  //     插件通道路由到宿主连接服务的宿主代次上继续可用；本代次上无害。
+  //
   // workspaces 数据源是 store 数据派生（spec 偏差，详见 task-5-report）而非
-  // ctx.get('workspaceRegistry')——宿主 0.1.5-rc.2 公开包实证不存在该服务，
-  // 数据派生同样满足 scope 选择器"列出已有工作区"的用途且始终非降级。
-  ctx.inject(['connection'], ({ connection }) => {
-    ctx.effect(async () => {
-      const workspaces = (): string[] => {
-        const seen = new Set<string>()
-        for (const e of store.snapshot().entries) {
-          if (e.scope !== 'global') seen.add(e.scope)
-        }
-        return [...seen]
+  // ctx.get('workspaceRegistry')——宿主 0.1.5-rc.2 公开包实证不存在该服务。
+  ctx.inject(['connection'], (webContext) => {
+    const workspaces = (): string[] => {
+      const seen = new Set<string>()
+      for (const e of store.snapshot().entries) {
+        if (e.scope !== 'global') seen.add(e.scope)
       }
-      const handler = createRpcHandler({ store, cfg: cfgRef, workspaces })
-      return connection.rpc.handle(RPC_CHANNEL, (endpoint, payload) => handler(endpoint, payload))
-    }, 'local-memory: rpc')
+      return [...seen]
+    }
+    const handler = createRpcHandler({ store, cfg: cfgRef, workspaces })
+    ctx.effect(async () => webContext.connection.rpc.handle(RPC_CHANNEL, (endpoint, payload) => handler(endpoint, payload)), 'local-memory: rpc')
+    // mnemon 的 HostContextShape 同款防御：inject 回调拿到的对象理应是 Context，
+    // 但若宿主形态变化（非 Context 实例）则跳过网关半，保留旧通道兜底。
+    if (!Context.is(webContext)) {
+      ctx.logger('local-memory').warn('local-memory: connection fiber did not deliver a Context instance; gateway transport skipped')
+      return
+    }
+    new LocalMemoryRemoteService(webContext, async (endpoint, payload) => handler(endpoint, payload))
   })
 }

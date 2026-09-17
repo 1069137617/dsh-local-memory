@@ -1,4 +1,7 @@
-// src/MemoryPage.tsx — 设置页：记忆条目管理（查看/增改删）+ 注入与工具设置。
+// src/MemoryPage.tsx — 设置页：注入与工具设置（原生行式）+ 记忆条目管理（查看/增改删）。
+//
+// 版式对齐官方设置页（通用设置先例）：分区标题 + 说明、行内「左标签/右控件」、
+// 细分隔线、控件用原生元素 + 主题令牌（styles.ts 的 --dsw-alias-*），亮暗主题自动适配。
 // 设置快照的真实形状是 {status, value, user, revision, writable}（先例：dsh-reasoning-tiers
 // CapabilitiesPage.tsx:17-23）——节值在 .value、用户覆盖在 .user，逐键合并后才是生效配置。
 // RPC/传输层的任何失败都落到显式错误横幅（含确切 message + 重试），页面永不静默失败。
@@ -120,7 +123,7 @@ export function MemoryPage({ settings, call, t }: Props): ReactNode {
 
   return (
     <div className="dshlm-page">
-      <h3>{t('pageLabel')}</h3>
+      <h3 className="dshlm-title">{t('pageLabel')}</h3>
       <p className="dshlm-hint">
         {t('hint')}
         {data && <span className="dshlm-chip dshlm-chip-dim">{t('revisionLabel')} {data.revision}</span>}
@@ -130,131 +133,154 @@ export function MemoryPage({ settings, call, t }: Props): ReactNode {
       {cfgReady && cfg.enabled === false && <div className="dshlm-banner dshlm-banner-warn">{t('disabledBanner')}</div>}
       {notice && <div className="dshlm-banner dshlm-banner-info">{notice}</div>}
 
-      {error !== '' ? (
+      {/* —— 分区一：注入与工具设置（原生行式：左标签/右控件）。加载失败时仍可用。 —— */}
+      <h4 className="dshlm-sec-title">{t('settingsTitle')}</h4>
+      <p className="dshlm-sec-hint">{t('settingsHint')}</p>
+      <div className="dshlm-settings">
+        {SETTING_KEYS.map((k) => (
+          <div key={k} className="dshlm-setrow">
+            <div className="dshlm-setrow-text">
+              <div className="dshlm-setrow-label">{t(`${k}.label` as keyof typeof zh)}</div>
+              <div className="dshlm-setrow-desc">{t(`${k}.desc` as keyof typeof zh)}</div>
+            </div>
+            <div className="dshlm-setrow-control">
+              <input
+                type="checkbox"
+                className="dshlm-check"
+                checked={Boolean(cfg[k])}
+                disabled={!cfgReady || !writable}
+                onChange={(ev) => field(k, ev.target.checked)}
+              />
+            </div>
+          </div>
+        ))}
+        {NUMBER_KEYS.map((k) => (
+          <div key={k} className="dshlm-setrow">
+            <div className="dshlm-setrow-text">
+              <div className="dshlm-setrow-label">{t(`${k}.label` as keyof typeof zh)}</div>
+              <div className="dshlm-setrow-desc">{t(`${k}.desc` as keyof typeof zh)}</div>
+            </div>
+            <div className="dshlm-setrow-control">
+              <input
+                type="number"
+                className="dshlm-num"
+                key={String(snapshot?.revision ?? 'n')}
+                defaultValue={Number(cfg[k] ?? 0)}
+                disabled={!cfgReady || !writable}
+                onBlur={(ev) => {
+                  const n = Number(ev.target.value)
+                  if (Number.isFinite(n) && n !== Number(cfg[k] ?? 0)) field(k, n)
+                }}
+              />
+              <span className="dshlm-unit">{t(`${k}.unit` as keyof typeof zh)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* —— 分区二：记忆条目（失败横幅只影响本区，含确切错误 + 重试） —— */}
+      <h4 className="dshlm-sec-title">{t('entriesTitle')}</h4>
+      <p className="dshlm-sec-hint">{t('entriesHint')}</p>
+
+      {error !== '' && (
         <div className="dshlm-banner dshlm-banner-bad">
           <div>{t('loadFailed')}：{error}</div>
-          <button onClick={() => void refresh()}>{t('retry')}</button>
+          <button className="dshlm-btn" onClick={() => void refresh()}>{t('retry')}</button>
         </div>
-      ) : !data ? (
-        <p className="dshlm-hint">{t('loading')}</p>
+      )}
+
+      {data === null ? (
+        error === '' && <p className="dshlm-hint">{t('loading')}</p>
       ) : (
         <>
           <div className="dshlm-toolbar">
-            {scopeTabs.map((s) => (
-              <button key={s.key} className={scopeTab === s.key ? 'dshlm-tab dshlm-tab-on' : 'dshlm-tab'} onClick={() => setScopeTab(s.key)}>
-                {s.label} <span className="dshlm-count">{s.count}</span>
-              </button>
-            ))}
+            <div className="dshlm-seg" role="tablist">
+              {scopeTabs.map((s) => (
+                <button key={s.key} role="tab" aria-selected={scopeTab === s.key} className={scopeTab === s.key ? 'dshlm-seg-btn dshlm-seg-on' : 'dshlm-seg-btn'} onClick={() => setScopeTab(s.key)}>
+                  {s.label} <span className="dshlm-count">{s.count}</span>
+                </button>
+              ))}
+            </div>
             <input className="dshlm-filter" placeholder={t('filterPlaceholder')} value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <button className="dshlm-primary" onClick={() => setDraft({ text: '', scope: 'global', importance: 'normal', tags: '' })}>{t('add')}</button>
+            <button className="dshlm-btn dshlm-primary" onClick={() => setDraft({ text: '', scope: 'global', importance: 'normal', tags: '' })}>{t('add')}</button>
           </div>
 
-          {draft && (
-            <div className="dshlm-add">
-              <div className="dshlm-add-title">{draft.id ? t('editTitle') : t('addTitle')}</div>
-              <textarea
-                placeholder={t('textPlaceholder')}
-                value={draft.text}
-                onChange={(e) => setDraft({ ...draft, text: e.target.value })}
-              />
-              <div className="dshlm-add-meta">
-                <label>
-                  <span className="dshlm-meta">{t('scopeLabel')}</span>
-                  <select value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })}>
-                    <option value="global">{t('scopeGlobal')}</option>
-                    {workspaces.map((w) => <option key={w} value={w}>{w}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span className="dshlm-meta">{t('importanceLabel')}</span>
-                  <select value={draft.importance} onChange={(e) => setDraft({ ...draft, importance: e.target.value as Importance })}>
-                    {IMPORTANCES.map((i) => <option key={i} value={i}>{t(IMPORTANCE_KEYS[i])}</option>)}
-                  </select>
-                </label>
-                <input className="dshlm-tags" placeholder={t('tagsPlaceholder')} value={draft.tags} onChange={(e) => setDraft({ ...draft, tags: e.target.value })} />
-              </div>
-              <div className="dshlm-add-actions">
-                {entryMax !== undefined && (
-                  <span className={overLimit ? 'dshlm-chip dshlm-chip-bad' : 'dshlm-chip dshlm-chip-dim'}>
-                    {tmpl(t('charCount'), { used: draft.text.length, max: entryMax })}
-                  </span>
-                )}
-                <button
-                  className="dshlm-primary"
-                  disabled={!draft.text.trim() || overLimit || draftBusy}
-                  onClick={async () => {
-                    setDraftBusy(true)
-                    try {
-                      const tags = draft.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
-                      const ok = draft.id
-                        ? await send('update', { id: draft.id, text: draft.text, importance: draft.importance, tags })
-                        : await send('add', { text: draft.text, scope: draft.scope, importance: draft.importance, tags })
-                      if (ok) setDraft(null)
-                    } finally {
-                      setDraftBusy(false)
-                    }
-                  }}
-                >{draftBusy ? t('saving') : t('save')}</button>
-                <button onClick={() => setDraft(null)}>{t('cancel')}</button>
-              </div>
-            </div>
-          )}
+              {draft && (
+                <div className="dshlm-add">
+                  <div className="dshlm-add-title">{draft.id ? t('editTitle') : t('addTitle')}</div>
+                  <textarea
+                    className="dshlm-textarea"
+                    placeholder={t('textPlaceholder')}
+                    value={draft.text}
+                    onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+                  />
+                  <div className="dshlm-add-meta">
+                    <label className="dshlm-field">
+                      <span className="dshlm-meta">{t('scopeLabel')}</span>
+                      <select className="dshlm-select" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })}>
+                        <option value="global">{t('scopeGlobal')}</option>
+                        {workspaces.map((w) => <option key={w} value={w}>{w}</option>)}
+                      </select>
+                    </label>
+                    <label className="dshlm-field">
+                      <span className="dshlm-meta">{t('importanceLabel')}</span>
+                      <select className="dshlm-select" value={draft.importance} onChange={(e) => setDraft({ ...draft, importance: e.target.value as Importance })}>
+                        {IMPORTANCES.map((i) => <option key={i} value={i}>{t(IMPORTANCE_KEYS[i])}</option>)}
+                      </select>
+                    </label>
+                    <input className="dshlm-tags" placeholder={t('tagsPlaceholder')} value={draft.tags} onChange={(e) => setDraft({ ...draft, tags: e.target.value })} />
+                  </div>
+                  <div className="dshlm-add-actions">
+                    {entryMax !== undefined && (
+                      <span className={overLimit ? 'dshlm-chip dshlm-chip-bad' : 'dshlm-chip dshlm-chip-dim'}>
+                        {tmpl(t('charCount'), { used: draft.text.length, max: entryMax })}
+                      </span>
+                    )}
+                    <button
+                      className="dshlm-btn dshlm-primary"
+                      disabled={!draft.text.trim() || overLimit || draftBusy}
+                      onClick={async () => {
+                        setDraftBusy(true)
+                        try {
+                          const tags = draft.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+                          const ok = draft.id
+                            ? await send('update', { id: draft.id, text: draft.text, importance: draft.importance, tags })
+                            : await send('add', { text: draft.text, scope: draft.scope, importance: draft.importance, tags })
+                          if (ok) setDraft(null)
+                        } finally {
+                          setDraftBusy(false)
+                        }
+                      }}
+                    >{draftBusy ? t('saving') : t('save')}</button>
+                    <button className="dshlm-btn" onClick={() => setDraft(null)}>{t('cancel')}</button>
+                  </div>
+                </div>
+              )}
 
-          {rows.length === 0 && (
-            <p className="dshlm-hint">
-              {data.entries.length === 0 ? t('empty') : tmpl(t('noMatch'), { q: filter.trim() })}
-            </p>
-          )}
-          {rows.map((e) => (
-            <div key={e.id} className="dshlm-row">
-              <div className="dshlm-text">{e.text}</div>
-              <div className="dshlm-row-meta">
-                <span className={e.scope === 'global' ? 'dshlm-chip dshlm-chip-dim' : 'dshlm-chip'}>{e.scope === 'global' ? t('scopeGlobal') : e.scope}</span>
-                <span className={`dshlm-chip dshlm-imp-${e.importance}`}>{t(IMPORTANCE_KEYS[e.importance as Importance] ?? 'importanceNormal')}</span>
-                {e.tags?.map((tg) => <span key={tg} className="dshlm-chip dshlm-chip-dim">#{tg}</span>)}
-                <span className="dshlm-meta">{t('updatedAtLabel')} {fmtTime(e.updatedAt)}</span>
-                <span className="dshlm-row-actions">
-                  <button onClick={() => setDraft({ id: e.id, text: e.text, scope: e.scope, importance: e.importance as Importance, tags: (e.tags ?? []).join(',') })}>{t('edit')}</button>
-                  <button className="dshlm-danger" onClick={() => { if (window.confirm(t('confirmRemove'))) void send('remove', { id: e.id }) }}>{t('remove')}</button>
-                </span>
+              {rows.length === 0 && (
+                <p className="dshlm-hint">
+                  {data.entries.length === 0 ? t('empty') : tmpl(t('noMatch'), { q: filter.trim() })}
+                </p>
+              )}
+              <div className="dshlm-list">
+                {rows.map((e) => (
+                  <div key={e.id} className="dshlm-card">
+                    <div className="dshlm-text">{e.text}</div>
+                    <div className="dshlm-row-meta">
+                      <span className={e.scope === 'global' ? 'dshlm-chip dshlm-chip-dim' : 'dshlm-chip'}>{e.scope === 'global' ? t('scopeGlobal') : e.scope}</span>
+                      <span className={`dshlm-chip dshlm-imp-${e.importance}`}>{t(IMPORTANCE_KEYS[e.importance as Importance] ?? 'importanceNormal')}</span>
+                      {e.tags?.map((tg) => <span key={tg} className="dshlm-chip dshlm-chip-dim">#{tg}</span>)}
+                      <span className="dshlm-meta">{t('updatedAtLabel')} {fmtTime(e.updatedAt)}</span>
+                      <span className="dshlm-row-actions">
+                        <button className="dshlm-btn" onClick={() => setDraft({ id: e.id, text: e.text, scope: e.scope, importance: e.importance as Importance, tags: (e.tags ?? []).join(',') })}>{t('edit')}</button>
+                        <button className="dshlm-btn dshlm-danger" onClick={() => { if (window.confirm(t('confirmRemove'))) void send('remove', { id: e.id }) }}>{t('remove')}</button>
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
-        </>
-      )}
-
-      <h4>{t('settingsTitle')}</h4>
-      <p className="dshlm-hint">{t('settingsHint')}</p>
-      <div className="dshlm-grid">
-        {SETTING_KEYS.map((k) => (
-          <label key={k} className="dshlm-cell">
-            <input
-              type="checkbox"
-              checked={Boolean(cfg[k])}
-              disabled={!cfgReady || !writable}
-              onChange={(ev) => field(k, ev.target.checked)}
-            />
-            <span className="dshlm-cell-label">{t(`${k}.label` as keyof typeof zh)}</span>
-            <span className="dshlm-cell-desc">{t(`${k}.desc` as keyof typeof zh)}</span>
-          </label>
-        ))}
-        {NUMBER_KEYS.map((k) => (
-          <label key={k} className="dshlm-cell">
-            <span className="dshlm-cell-label">{t(`${k}.label` as keyof typeof zh)}</span>
-            <input
-              type="number"
-              key={String(snapshot?.revision ?? 'n')}
-              defaultValue={Number(cfg[k] ?? 0)}
-              disabled={!cfgReady || !writable}
-              onBlur={(ev) => {
-                const n = Number(ev.target.value)
-                if (Number.isFinite(n) && n !== Number(cfg[k] ?? 0)) field(k, n)
-              }}
-            />
-            <span className="dshlm-cell-desc">{t(`${k}.desc` as keyof typeof zh)}</span>
-          </label>
-        ))}
-      </div>
-    </div>
-  )
-}
+            </>
+          )}
+        </div>
+      )
+    }

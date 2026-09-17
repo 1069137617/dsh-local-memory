@@ -1,5 +1,10 @@
 // src/api.ts — structural types only; zero value imports of host packages.
-export const RPC_CHANNEL = '/local-memory'
+// 传输走 API Gateway（唯一真实路由到插件的通道，实证链见 remote.ts 头注）：
+// 客户端 POST `/api/<namespace>/call`，业务负载装进 `{args:{endpoint,payload}}`
+// （网关按服务方法的形参名精确接线，多余键会被 assertExactArguments 拒绝）。
+export const GATEWAY_CHANNEL = '/api'
+export const REMOTE_NAMESPACE = 'dshLocalMemory'
+export const REMOTE_METHOD = 'call'
 
 export type PathOp =
   | { readonly op: 'set'; readonly path: readonly string[]; readonly value: unknown }

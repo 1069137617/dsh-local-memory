@@ -32,7 +32,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-import { RPC_CHANNEL, bindScope, type RpcCall, type RpcResult } from './api.ts'
+import { GATEWAY_CHANNEL, REMOTE_METHOD, REMOTE_NAMESPACE, bindScope, type RpcCall, type RpcResult } from './api.ts'
 import { MemoryPage } from './MemoryPage.tsx'
 import { NS, en, zh } from './locales.ts'
 import { injectStyles } from './styles.ts'
@@ -57,8 +57,20 @@ export function apply(ctx: Context): void {
   ctx.inject(['settingsScope'], (scope) => {
     const binder = scope.settingsScope
     const translate = scope.locale.bind(NS)
-    const call: RpcCall = <T,>(endpoint: string, payload?: unknown, signal?: AbortSignal) =>
-      scope.connection.rpc.call(RPC_CHANNEL, endpoint, payload ?? {}, signal) as Promise<RpcResult<T>>
+    // 网关传输：POST /api/dshLocalMemory/call，负载 {args:{endpoint,payload}}。
+    // 双重信封——rpc.call 的结果信封 {ok,value|error} 里，value 才是业务 RpcResult
+    // （createRpcHandler 产物）；网关层失败（gateway/*、transport 抛错）在这里
+    // 归一成业务形状，页面横幅只见一种错误模型。
+    const call: RpcCall = async <T,>(endpoint: string, payload?: unknown, signal?: AbortSignal) => {
+      const envelope = (await scope.connection.rpc.call(
+        GATEWAY_CHANNEL,
+        `${REMOTE_NAMESPACE}/${REMOTE_METHOD}`,
+        { args: { endpoint, payload: payload ?? {} } },
+        signal,
+      )) as unknown as RpcResult<unknown>
+      if (!envelope.ok) return { ok: false, error: envelope.error } as RpcResult<T>
+      return envelope.value as RpcResult<T>
+    }
     scope.slots.inject(SLOT, () =>
       scope.slots.register(
         {
