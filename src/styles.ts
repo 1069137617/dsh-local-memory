@@ -17,7 +17,14 @@ const CSS = `
 .dshlm-setrow-label { color: var(--dsw-alias-label-primary, inherit); }
 .dshlm-setrow-desc { color: var(--dsw-alias-label-tertiary, #888); font-size: 12px; margin-top: 2px; }
 .dshlm-setrow-control { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
-.dshlm-check { width: 16px; height: 16px; accent-color: var(--dsw-alias-brand-primary, #4c6ef5); cursor: pointer; }
+/* 滑动开关：appearance:none 的 checkbox，胶囊轨道 + 圆形滑块（::after）。
+   关闭态轨道取 bg-layer-3、滑块取 label-tertiary；开启态轨道品牌色、滑块白色。亮暗主题自适应。 */
+.dshlm-toggle { appearance: none; -webkit-appearance: none; position: relative; flex-shrink: 0; width: 38px; height: 22px; margin: 0; border-radius: 999px; background: var(--dsw-alias-bg-layer-3, rgba(128,128,128,.28)); border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+.dshlm-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--dsw-alias-label-tertiary, #999); transition: transform .16s ease, background .16s ease; }
+.dshlm-toggle:checked { background: var(--dsw-alias-brand-primary, #4c6ef5); border-color: var(--dsw-alias-brand-primary, #4c6ef5); }
+.dshlm-toggle:checked::after { transform: translateX(16px); background: #fff; }
+.dshlm-toggle:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #4c6ef5); outline-offset: 2px; }
+.dshlm-toggle:disabled { opacity: .5; cursor: default; }
 .dshlm-num { width: 96px; box-sizing: border-box; text-align: right; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3)); background: var(--dsw-alias-bg-layer-2, transparent); color: inherit; font: inherit; }
 .dshlm-num:focus { outline: none; border-color: var(--dsw-alias-brand-primary, #4c6ef5); }
 .dshlm-num:disabled { opacity: .5; }

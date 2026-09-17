@@ -146,7 +146,9 @@ export function MemoryPage({ settings, call, t }: Props): ReactNode {
             <div className="dshlm-setrow-control">
               <input
                 type="checkbox"
-                className="dshlm-check"
+                role="switch"
+                className="dshlm-toggle"
+                aria-label={t(`${k}.label` as keyof typeof zh)}
                 checked={Boolean(cfg[k])}
                 disabled={!cfgReady || !writable}
                 onChange={(ev) => field(k, ev.target.checked)}
