@@ -99,7 +99,7 @@ export class MemoryStore {
     const entry: MemoryEntry = {
       id: this.newId(), text: validateEntryText(input.text, maxChars),
       scope: input.scope === 'global' ? 'global' : normalizeScope(input.scope) || 'global',
-      importance: input.importance ?? 'normal', ...(tags.length ? { tags } : {}),
+      importance: input.importance !== undefined && IMPORTANCES.includes(input.importance) ? input.importance : 'normal', ...(tags.length ? { tags } : {}),
       source, createdAt: when?.createdAt ?? now, updatedAt: when?.updatedAt ?? now,
     }
     this.entries.push(entry)

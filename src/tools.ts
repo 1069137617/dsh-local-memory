@@ -100,7 +100,7 @@ export const makeRememberTool = (store: MemoryStore, cfg: () => Config) => defin
         return { completion: 'committed' as const, id: entry.id, revision: snap.revision }
       }
       if (a.action === 'replace' || a.action === 'remove') {
-        if (a.action === 'replace' && a.text === undefined) return fail('replace requires text')
+        if (a.action === 'replace' && a.text == null) return fail('replace requires text')
         const { entry, matches } = findTarget(store, a)
         if (!entry) {
           return fail(matches.length === 0 ? `no entry matched ${a.id ?? a.old_text}` : `ambiguous: ids ${matches.map((m) => m.id).join(', ')}`)

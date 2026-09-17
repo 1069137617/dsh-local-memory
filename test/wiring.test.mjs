@@ -23,6 +23,11 @@ test('no mnemon anywhere in manifests', () => {
   assert.ok(!blob.includes('dsh-mnemon'), 'package.json must not reference dsh-mnemon')
 })
 
+test('npm tarball ships the bundle patch', () => {
+  assert.ok(pkg.files.includes('cordis.patch.yml'), 'files[] must include cordis.patch.yml')
+  assert.ok(pkg.files.includes('README.md') && pkg.files.includes('README.zh.md'), 'files[] must ship both READMEs')
+})
+
 test('peer floors', () => {
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-tools'], '>=0.1.5-rc.1')
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-system-prompt'], '>=0.1.5-rc.1')
