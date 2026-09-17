@@ -13,11 +13,14 @@ const BaseConfig = z.object({
   maxInjectionChars: z.number(),
   entryMaxChars: z.number(),
   searchLimit: z.number(),
+  // 按需索引（spec 2026-09-16）：full=现状全文；index=critical 全文 + normal/low 摘要行。
+  // z.union([z.const…]) 探针实证可用且拒绝非法值（schemastery 3.18.2）。
+  injectMode: z.union([z.const('full'), z.const('index')]),
 })
 
 // Pick 白名单是真硬化：schemastery 的 TypeT 输出面带 `{[k:string]:any}` 交叉（Dict 索引签名），
 // mapped type `{[K in keyof T]: T[K]}` 会保留该索引签名（Task 4 评审 tsc 探针实证），Pick 精确剔除。
-export type Config = Pick<Schemastery.TypeT<typeof BaseConfig>, 'enabled' | 'injectEnabled' | 'injectWorkspace' | 'allowAgentWrite' | 'maxInjectionChars' | 'entryMaxChars' | 'searchLimit'>
+export type Config = Pick<Schemastery.TypeT<typeof BaseConfig>, 'enabled' | 'injectEnabled' | 'injectWorkspace' | 'allowAgentWrite' | 'maxInjectionChars' | 'entryMaxChars' | 'searchLimit' | 'injectMode'>
 
 export const ConfigSchema = Object.assign(BaseConfig, {
   parse(value: Config): Config {
@@ -27,7 +30,7 @@ export const ConfigSchema = Object.assign(BaseConfig, {
 
 export const DEFAULTS: Config = {
   enabled: true, injectEnabled: true, injectWorkspace: true, allowAgentWrite: true,
-  maxInjectionChars: 4000, entryMaxChars: 2000, searchLimit: 8,
+  maxInjectionChars: 4000, entryMaxChars: 2000, searchLimit: 8, injectMode: 'full',
 }
 
 export function validateConfig(v: Config): void {

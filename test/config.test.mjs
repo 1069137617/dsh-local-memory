@@ -17,3 +17,9 @@ test('validateConfig ranges', () => {
 test('schema parses booleans/numbers', () => {
   assert.equal(ConfigSchema.parse(DEFAULTS).injectWorkspace, true)
 })
+test('injectMode: default full, enum enforced', () => {
+  assert.equal(DEFAULTS.injectMode, 'full')
+  assert.equal(ConfigSchema.parse(DEFAULTS).injectMode, 'full')
+  assert.equal(ConfigSchema.parse({ ...DEFAULTS, injectMode: 'index' }).injectMode, 'index')
+  assert.throws(() => ConfigSchema.parse({ ...DEFAULTS, injectMode: 'nope' }))
+})
