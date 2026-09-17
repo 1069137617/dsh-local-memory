@@ -5,7 +5,7 @@ A **DSH** plugin that mounts a persistent, editable local memory into every sess
 ## Capabilities
 
 1. **Per-turn context injection** — a user-role snapshot (context name `local-memory:snapshot`, order 200) is injected into every turn; global vs workspace entries are separated by the session's working directory.
-2. **Agent tools** — `local_memory_search` (query/scope/limit retrieval) and `local_memory_remember` (add / replace / remove with Edit-style literal replacement semantics).
+2. **Agent tools** — `local_memory_search` (query/scope/limit retrieval, plus `ids` for exact full-text expansion of index lines) and `local_memory_remember` (add / replace / remove with Edit-style literal replacement semantics).
 3. **Settings page** — the "Local Memory" page: browse, filter, scope tabs, CRUD with revision conflict protection, plus direct editing of injection & tool settings.
 
 ## Install (web profile)
@@ -61,6 +61,7 @@ Or add to the profile's `package.json` dependencies:
 | `maxInjectionChars` | `4000` (200–20000) | character budget of the injected snapshot |
 | `entryMaxChars` | `2000` (50–8000) | max characters per entry |
 | `searchLimit` | `8` (1–32) | default tool retrieval count |
+| `injectMode` | `full` (`full`/`index`) | `index`: critical entries stay full-text, normal/low inject 80-char summary lines the agent expands via `local_memory_search(ids=[…])` |
 
 ## Injection format example
 
@@ -73,6 +74,10 @@ Or add to the profile's `package.json` dependencies:
 ```
 
 When the budget runs out a "k of m entries shown — call local_memory_search" hint is appended; with nothing to inject the callback returns an empty string (the host skips it).
+
+## On-demand index mode
+
+With `injectMode: "index"` the snapshot keeps `critical` entries verbatim and renders normal/low entries as one-line summaries (`§ [id:…][importance][tags] first 80 chars…`), cutting the standing context to roughly a third. A trailing hint tells the agent to expand any line via `local_memory_search` with `ids`. Default is `full` (no behavior change until opted in); toggling back restores the previous rendering byte-for-byte.
 
 ## Troubleshooting
 

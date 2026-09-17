@@ -5,7 +5,7 @@
 ## 能力
 
 1. **每轮上下文注入** —— 以用户角色快照（context 名 `local-memory:snapshot`，order 200）把记忆摘要注入每个回合；随会话工作区自动区分全局/工作区条目。
-2. **Agent 工具** —— `local_memory_search`（按 query/scope/limit 检索）与 `local_memory_remember`（add / replace / remove，Edit 式字面替换语义）。
+2. **Agent 工具** —— `local_memory_search`（按 query/scope/limit 检索，`ids` 参数按 id 精确展开索引行全文）与 `local_memory_remember`（add / replace / remove，Edit 式字面替换语义）。
 3. **设置面板管理页** —— 「本地记忆」页：查看、过滤、按作用域分页签浏览，增改删条目（带 revision 冲突保护），并直接编辑注入与工具设置。
 
 ## 安装（web profile）
@@ -61,6 +61,7 @@ npm install dsh-local-memory
 | `maxInjectionChars` | `4000`（200–20000） | 注入快照的字符预算 |
 | `entryMaxChars` | `2000`（50–8000） | 单条记忆的最大字符数 |
 | `searchLimit` | `8`（1–32） | 工具检索默认条数 |
+| `injectMode` | `full`（`full`/`index`） | `index`：critical 保留全文，normal/low 只注入 80 字摘要行，AI 用 `local_memory_search(ids=[…])` 按需展开 |
 
 ## 注入格式示例
 
@@ -73,6 +74,10 @@ npm install dsh-local-memory
 ```
 
 空间不足时给出「k of m entries shown — call local_memory_search」提示行；无可注入内容时本回合注入空串（宿主跳过）。
+
+## 按需索引模式
+
+`injectMode` 设为 `index` 后：critical 条目仍逐字注入；normal/low 只注入一行摘要（`§ [id:…][importance][tags] 前80字…`），常驻上下文约降至三分之一。快照尾部自带指引行，AI 据此用 `local_memory_search` 的 `ids` 参数按 id 展开全文。默认 `full`，行为与旧版完全一致；切回即逐字节恢复原渲染。
 
 ## 故障排查
 
