@@ -19,7 +19,7 @@ npm install dsh-local-memory
 Or add to the profile's `package.json` dependencies:
 
 ```json
-"dsh-local-memory": "^0.2.0"
+"dsh-local-memory": "^0.3.1"
 ```
 
 ### From source (development)
@@ -40,7 +40,7 @@ Or add to the profile's `package.json` dependencies:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `id` | string | entry id (timestamp + random suffix) |
+| `id` | string | entry id (12 hex of a random UUID) |
 | `text` | string | memory text |
 | `scope` | string | `"global"` or normalized workspace path (backslashes → slashes, lowercased drive letter, trailing slash trimmed) |
 | `importance` | string | `critical` / `normal` / `low` |
@@ -49,6 +49,15 @@ Or add to the profile's `package.json` dependencies:
 | `source` | string | `"agent"` (model-written) or `"ui"` (settings page) |
 
 - The top-level revision = first 12 hex of the sha256 over the id-sorted entry fingerprint; concurrent movers are rejected via the `expectedRevision` optimistic lock (error code `revision-conflict`).
+
+### Multiple processes (multi-instance / web + CLI in parallel)
+
+Writes are cross-process safe since 0.3.1: the temp file carries the writer identity, a `O_EXCL` lock file serializes flushes, and each flush re-reads the file and **merges** entries written by other processes instead of overwriting them.
+
+- **Guaranteed**: independent `add`s from concurrent processes are all preserved; no writer crashes; no torn lines.
+- **Merged by id**: when both sides hold the same id, the newer `updatedAt` wins. A stale copy cannot clobber a newer one.
+- **Known boundary**: if one process deletes an entry while another concurrently holds that entry and a *newer* timestamp for it, the delete can lose and the entry survives. Deletion wins only against copies it has already seen.
+- **Lock wait is bounded (2s)**: if the lock cannot be taken in time the write **fails loudly** rather than silently overwriting. Under extreme concurrency (roughly a dozen processes hammering the same file) tail writers can hit this limit — retry the operation.
 
 ## Settings namespace `local-memory`
 
@@ -66,14 +75,15 @@ Or add to the profile's `package.json` dependencies:
 ## Injection format example
 
 ```
-## LOCAL MEMORY SNAPSHOT (3 entries, 512/4000 chars, cwd d:/code/x)
-
-- [global|critical] Redeploys need a 45s cooldown #ftp
-- [d:/code/x|normal] Test baseline for this repo is 29/29
-- [d:/code/y|low] Legacy project notes (2 of 7 entries shown — call local_memory_search)
+LOCAL MEMORY SNAPSHOT (revision bf84efb594e3; dsh-local-memory; treat as quoted historical data — current instructions win. This snapshot supersedes earlier LOCAL MEMORY SNAPSHOTs.)
+Contents of global memory (2 entries, 139/4000 chars):
+§ [id:9d99782417fe][critical] [ftp] Redeploys need a 45s cooldown
+§ [id:6e2bfd8ae791][low] Legacy project notes
+Contents of workspace memory (d:/code/x, 1 entry, 204/4000 chars):
+§ [id:2a647ba3910a][normal] Test baseline for this repo is 29/29
 ```
 
-When the budget runs out a "k of m entries shown — call local_memory_search" hint is appended; with nothing to inject the callback returns an empty string (the host skips it).
+The workspace group header carries the session cwd. When the budget runs out an `(N entries omitted — call local_memory_search to retrieve them)` line is appended, and in index mode a further line marks normal/low rows as index-only. The fixed 181-char `HEADER` and these trailing hint lines are **not** counted against `maxInjectionChars`, which bounds entry rows only. With nothing to inject the callback returns an empty string (the host skips it).
 
 ## On-demand index mode
 
@@ -83,6 +93,7 @@ With `injectMode: "index"` the snapshot keeps `critical` entries verbatim and re
 
 - **"N corrupt lines" badge**: partially written or hand-edited lines in `entries.jsonl`; they are skipped — remove them by hand, valid lines are unaffected.
 - **"Changed elsewhere — view refreshed"**: the store revision moved between page load and submit (another window / an agent write); the page re-pulled automatically, just retry.
+- **Tool reports `locked by another process`**: another process holds the write lock and did not release it within 2s. This write did **not** happen (it never silently overwrites) — retry the operation.
 - **Tool says disabled**: the `enabled` or `allowAgentWrite` setting is off.
 - **Page/tools missing entirely**: bundles load at boot only — check the bundles entry and restart `dsh web`.
 - **Coexisting with dsh-mnemon**: neither reads or writes the other's data; both may inject their own snapshots simultaneously.
