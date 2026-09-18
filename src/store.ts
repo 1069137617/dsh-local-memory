@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Importance = 'critical' | 'normal' | 'low'
@@ -58,6 +58,14 @@ export class MemoryStore {
   private corrupt = 0
   // 本进程显式删除过的 id：合并时用来压制"对手磁盘上仍持有该条"导致的复活
   private tombstones = new Set<string>()
+  // 本进程"认为已经落过盘"的 id。合并时用来区分两种"本地有、磁盘没有"：
+  //   曾经落过盘 ⇒ 对手把它删了 ⇒ 跟随删除（否则删除会被下一次写入复活）
+  //   从未落盘   ⇒ 本地新 add 还没写出去 ⇒ 必须保留
+  private knownOnDisk = new Set<string>()
+  // 读路径节流的磁盘签名（mtime:size）。纯读不再"冻结在 load() 那一刻"，
+  // 但也不能每轮注入都无条件读盘 —— 签名没变就跳过。
+  private lastSignature = ''
+  private refreshing = false
   constructor(public readonly dir: string) {}
   get file(): string { return join(this.dir, 'entries.jsonl') }
   get lockFile(): string { return this.file + '.lock' }
@@ -66,6 +74,8 @@ export class MemoryStore {
     this.entries = []
     this.corrupt = 0
     this.tombstones.clear() // 重新 load = 以磁盘为真值，本地删除意图作废
+    this.knownOnDisk.clear()
+    const byId = new Map<string, MemoryEntry>()
     let raw = ''
     try { raw = readFileSync(this.file, 'utf8') } catch { raw = '' }
     for (const line of raw.split('\n')) {
@@ -73,9 +83,16 @@ export class MemoryStore {
       try {
         const parsed = JSON.parse(line) as Record<string, unknown>
         if (typeof parsed?.id !== 'string' || typeof parsed?.text !== 'string') throw new Error('shape')
-        this.entries.push(this.adopt(parsed))
+        const entry = this.adopt(parsed)
+        // 同 id 多行（历史遗留 / 手工编辑 / 早期并发）收敛为一条：updatedAt 较新者胜。
+        // 不去重则 remove() 只删第一处，界面报"删除成功"、重新加载后条目又回来。
+        const seen = byId.get(entry.id)
+        if (!seen || ts(entry.updatedAt) > ts(seen.updatedAt)) byId.set(entry.id, entry)
       } catch { this.corrupt += 1 }
     }
+    this.entries = [...byId.values()]
+    for (const e of this.entries) this.knownOnDisk.add(e.id)
+    this.lastSignature = this.signature()
     return this.snapshot()
   }
 
@@ -97,7 +114,31 @@ export class MemoryStore {
     const rows = this.entries.map((e) => [e.id, e.text, e.scope, e.importance, e.tags ?? [], e.updatedAt] as const)
     return digest(rows.sort((a, b) => (a[0] < b[0] ? -1 : 1)))
   }
-  snapshot(): StoreSnapshot { return { entries: [...this.entries], revision: this.revision(), corruptLines: this.corrupt } }
+
+  // 磁盘签名：mtime+size 足以发现"别的进程写过"。文件不存在时回落为 'absent'。
+  private signature(): string {
+    try { const st = statSync(this.file); return `${st.mtimeMs}:${st.size}` } catch { return 'absent' }
+  }
+
+  // 读路径刷新：合并此前只在 flush 内发生，导致纯读（每轮注入 / local_memory_search）
+  // 在进程生命周期内永远看不到对手的写入——本实例的记忆库冻结在 load() 那一刻。
+  // 这里在读操作前做一次带节流的检查：签名没变就直接返回（热路径零 IO 开销），
+  // 变了才在锁内重读合并。已知无法保证与"对手正在写"完全无竞争，但有界重试即可收敛。
+  private refreshFromDisk(): void {
+    if (this.refreshing) return // 合并内部会调 snapshot()，防重入
+    const sig = this.signature()
+    if (sig === this.lastSignature) return
+    this.refreshing = true
+    try {
+      this.withLock(() => { this.mergeFromDisk(); this.lastSignature = this.signature() })
+    } catch { /* 读路径拿不到锁：本次沿用内存副本，下次读再试（不阻断注入） */ }
+    finally { this.refreshing = false }
+  }
+
+  snapshot(): StoreSnapshot {
+    this.refreshFromDisk()
+    return { entries: [...this.entries], revision: this.revision(), corruptLines: this.corrupt }
+  }
   byId(id: string): MemoryEntry | undefined { return this.entries.find((e) => e.id === id) }
 
   newId(): string {
@@ -179,6 +220,10 @@ export class MemoryStore {
       const tmp = `${this.file}.${process.pid}.${(this.tmpSeq += 1)}.tmp`
       writeFileSync(tmp, this.entries.map((e) => JSON.stringify(e)).join('\n') + (this.entries.length ? '\n' : ''), 'utf8')
       this.publish(tmp)
+      // 落盘成功：此刻磁盘内容 == 内存内容，登记所有权并刷新签名（避免刚写完就被
+      // 自己的读路径判定为"外部变更"而多做一次合并）
+      this.knownOnDisk = new Set(this.entries.map((e) => e.id))
+      this.lastSignature = this.signature()
     })
   }
 
@@ -218,33 +263,43 @@ export class MemoryStore {
     }
   }
 
-  // 锁内把"磁盘上有、本进程没有"的条目并进来（issue #1 发现 1 第二层：本进程内存数组
-  // 整体覆盖磁盘会静默抹掉对手的写入）。语义：
+  // 锁内把磁盘与内存对齐（issue #1 发现 1 第二层：本进程内存数组整体覆盖磁盘会静默
+  // 抹掉对手的写入；反之只做并集则会把对手的删除"复活"）。语义：
   // - 对手新写的 id：并入（tombstone 压制本进程显式删过的 id，防复活）
   // - 同 id 双方都有：updatedAt 较新者胜（本地较新则保留本地，对手较新则采纳对手）
+  // - 本地有、磁盘没有：若该 id 曾经落过盘（knownOnDisk）⇒ 对手删了它 ⇒ 跟随删除；
+  //   若从未落盘 ⇒ 是本地刚 add、还没写出去的条目 ⇒ 保留
   // - 顺序：外来条目排在本地条目之前，保证本地新 add 的条目仍在末位
   //   （tools.ts:120 的回执按 entries[len-1] 反查，此契约必须守住）
   private mergeFromDisk(): void {
     let raw = ''
-    try { raw = readFileSync(this.file, 'utf8') } catch { return } // 尚无文件：无需合并
+    let present = true
+    try { raw = readFileSync(this.file, 'utf8') } catch { present = false } // 尚无文件：无需合并
+    const diskIds = new Set<string>()
     const local = new Map(this.entries.map((e) => [e.id, e]))
     const foreign: MemoryEntry[] = []
-    for (const line of raw.split('\n')) {
+    for (const line of present ? raw.split('\n') : []) {
       if (!line.trim()) continue
       let parsed: Record<string, unknown>
       try { parsed = JSON.parse(line) as Record<string, unknown> } catch { continue } // 坏行留给 corruptLines 统计
       if (typeof parsed?.id !== 'string' || typeof parsed?.text !== 'string') continue
       const id = String(parsed.id)
       if (this.tombstones.has(id)) continue
+      diskIds.add(id)
       const mine = local.get(id)
       if (!mine) { foreign.push(this.adopt(parsed)); continue }
       const theirs = this.adopt(parsed)
       if (ts(theirs.updatedAt) > ts(mine.updatedAt)) local.set(id, theirs) // 对手更新：采纳
     }
-    if (!foreign.length && local.size === this.entries.length
-      && this.entries.every((e) => local.get(e.id) === e)) return // 无变化：保持原数组引用
+    // 差集：曾经落过盘、如今磁盘上没有、且不是本进程刚删的 ⇒ 对手删过它，跟随删除。
+    // （本进程删的 id 已进 tombstones 且已从 entries 移除，这里天然不会命中。）
+    for (const e of this.entries) {
+      if (this.knownOnDisk.has(e.id) && !diskIds.has(e.id)) local.delete(e.id)
+    }
+    const changed = foreign.length > 0 || local.size !== this.entries.length
+    if (!changed && this.entries.every((e) => local.get(e.id) === e)) return // 无变化：保持原数组引用
     const merged = [...foreign]
-    for (const e of this.entries) merged.push(local.get(e.id) ?? e)
+    for (const e of this.entries) { const keep = local.get(e.id); if (keep) merged.push(keep) }
     this.entries = merged
   }
 

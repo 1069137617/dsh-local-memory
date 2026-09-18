@@ -9,7 +9,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { ConfigSchema, DEFAULTS, validateConfig, type Config } from './config.js'
-import { renderSnapshot } from './render.js'
+import { safeRenderSnapshot } from './render.js'
 import { makeRememberTool, makeSearchTool } from './tools.js'
 import { createRpcHandler, RPC_CHANNEL } from './protocol.js'
 import { LocalMemoryRemoteService } from './remote.js'
@@ -51,10 +51,13 @@ export function apply(ctx: Context): void {
             name: CONTEXT_NAME,
             order: CONTEXT_ORDER,
             text: (c) => {
-              try {
-                const cwdRaw = (c as AgentLike).agent?.session?.header?.cwd
-                return renderSnapshot(store.snapshot(), cfgRef(), cwdRaw ? normalizeScope(cwdRaw) : '')
-              } catch { return '' }
+              // 渲染失败降级为"本回合不注入"，但必须报出去：此前是裸 catch { return '' }，
+              // 任何渲染故障都表现为"本轮没有记忆"且无日志，用户与 agent 都无从察觉。
+              const cwdRaw = (c as AgentLike).agent?.session?.header?.cwd
+              return safeRenderSnapshot(
+                store.snapshot(), cfgRef(), cwdRaw ? normalizeScope(cwdRaw) : '',
+                (e) => ctx.logger('local-memory').warn(`local-memory: snapshot render failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`),
+              )
             },
           })
         } catch (e) {

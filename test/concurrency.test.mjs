@@ -14,8 +14,30 @@ import { MemoryStore } from '../lib/store.js'
 // 写者进程脚本放在 scripts/ 而非 test/：Node 的默认发现规则含 **/test/**/*.mjs，
 // 留在 test/ 下会被当成测试文件执行（无参数静默退出 ⇒ 虚增一个"假通过"的用例）。
 const WORKER = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'concurrent-writer.mjs')
+const PEER = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'peer-process.mjs')
 const newDir = () => join(mkdtempSync(join(tmpdir(), 'dshlm-conc-')), 'mem')
 const entryFile = (dir) => join(dir, 'entries.jsonl')
+
+// 起一个真实对手进程，等它就绪后交由调用方操作，再放行并等它退出。
+const withPeer = async (mode, dir, drive) => {
+  mkdirSync(dir, { recursive: true })
+  const ready = join(dir, `READY-${mode}`)
+  const go = join(dir, `GO-${mode}`)
+  const child = spawn(process.execPath, [PEER, mode, dir, ready, go], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let err = ''
+  child.stderr.on('data', (d) => { err += d })
+  const exited = new Promise((res) => child.on('close', (code) => res(code)))
+  const deadline = Date.now() + 20_000
+  while (!existsSync(ready)) {
+    if (Date.now() > deadline) throw new Error(`peer ${mode} never became ready (stderr: ${err})`)
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  const report = await drive(ready)
+  writeFileSync(go, 'go', 'utf8')
+  const code = await exited
+  if (code !== 0) throw new Error(`peer ${mode} exited ${code}: ${err.split('\n')[0]}`)
+  return report
+}
 
 // 4 进程 × 5 条，起跑线对齐后同时写同一文件
 const runConcurrent = async (procs = 4, per = 5) => {
@@ -167,6 +189,138 @@ test('merge: concurrent writers lose nothing (all adds survive)', async () => {
   const ids = parsed.filter(Boolean).map((e) => e.id)
   assert.equal(new Set(ids).size, ids.length, 'duplicate ids found')
   assert.equal(ids.length, expected, `lost ${expected - ids.length}/${expected} concurrently added entries`)
+})
+
+// ---- 删除的跨进程可见性（issue #1 P0 修复的未完成面）----
+// 机制：mergeFromDisk 只做「并集」——本地内存持有的条目即使磁盘上已被对手删除，
+// 也会在下一次 flush 时被原样写回。tombstones 是实例字段、不跨进程，管不到对手。
+// 注意这与 README 承认的边界不同：对手**不需要**持有更新的时间戳，只要持有旧副本即可。
+test('merge: an entry deleted by another process is not resurrected by a later local write', () => {
+  const dir = newDir()
+  const a = new MemoryStore(dir)
+  a.load()
+  a.add({ text: 'victim', scope: 'global' }, 'ui')
+  a.add({ text: 'keeper', scope: 'global' }, 'ui')
+
+  const b = new MemoryStore(dir)
+  b.load() // B 起得早：内存里持有 victim（此时磁盘上仍有它）
+  const victim = a.snapshot().entries.find((e) => e.text === 'victim')
+  a.remove(victim.id) // A 删除 ⇒ 磁盘上不再有 victim
+  assert.ok(!readFileSync(entryFile(dir), 'utf8').includes('victim'), 'precondition: victim must be gone from disk')
+
+  b.add({ text: 'b-new', scope: 'global' }, 'ui') // B 写入 ⇒ 不得把 victim 写回
+  const texts = readFileSync(entryFile(dir), 'utf8').trim().split('\n').map((l) => JSON.parse(l).text)
+  assert.ok(!texts.includes('victim'), `a deleted entry was resurrected by another process's write: ${texts.join(' , ')}`)
+  assert.ok(texts.includes('keeper'))
+  assert.ok(texts.includes('b-new'))
+})
+
+// ---- 读路径的跨进程可见性 ----
+// 机制：mergeFromDisk 只在 flush 内被调用 ⇒ 纯读（每轮注入、local_memory_search）
+// 在进程生命周期内永远看不到对手的写入，本实例的记忆库冻结在 load() 那一刻。
+test('read path: a foreign write becomes visible without any local write', () => {
+  const dir = newDir()
+  const s = new MemoryStore(dir)
+  s.load()
+  s.add({ text: 'mine', scope: 'global' }, 'ui')
+  const revBefore = s.revision()
+
+  const other = new MemoryStore(dir)
+  other.load()
+  other.add({ text: 'from-other-process', scope: 'global' }, 'ui')
+
+  const texts = s.snapshot().entries.map((e) => e.text)
+  assert.ok(texts.includes('from-other-process'), `a pure read never saw the foreign write: ${texts.join(' , ')}`)
+  assert.notEqual(s.revision(), revBefore, 'revision must move so the optimistic lock can see foreign writes')
+})
+
+test('read path: a foreign delete becomes visible without any local write', () => {
+  const dir = newDir()
+  const s = new MemoryStore(dir)
+  s.load()
+  s.add({ text: 'keep', scope: 'global' }, 'ui')
+  s.add({ text: 'doomed', scope: 'global' }, 'ui')
+
+  const other = new MemoryStore(dir)
+  other.load()
+  const doomed = other.snapshot().entries.find((e) => e.text === 'doomed')
+  other.remove(doomed.id)
+
+  const texts = s.snapshot().entries.map((e) => e.text)
+  assert.ok(!texts.includes('doomed'), `a pure read still shows an entry deleted elsewhere: ${texts.join(' , ')}`)
+})
+
+// ---- 磁盘重复 id：删除只删第一处，回执却报成功 ----
+// load() 不去重 ⇒ entries 里同 id 多条；remove() 用 findIndex 只删第一条，
+// 用户看到「删除成功」、条目重新加载后又回来了。
+test('load: duplicate ids on disk collapse so a delete really removes the entry', () => {
+  const dir = newDir()
+  const s = new MemoryStore(dir)
+  s.load()
+  s.add({ text: 'dup-payload', scope: 'global' }, 'ui')
+  const row = readFileSync(entryFile(dir), 'utf8').trim()
+  writeFileSync(entryFile(dir), `${row}\n${row}\n`, 'utf8') // 历史遗留/手工编辑造成的同 id 两行
+
+  s.load()
+  assert.equal(s.snapshot().entries.length, 1, 'duplicate ids must collapse to a single entry on load')
+  s.remove(s.snapshot().entries[0].id)
+  assert.equal(readFileSync(entryFile(dir), 'utf8').trim(), '', 'remove left a duplicate row behind')
+})
+
+test('load: duplicate ids keep the newer revision', () => {
+  const dir = newDir()
+  const s = new MemoryStore(dir)
+  s.load()
+  s.add({ text: 'old-text', scope: 'global' }, 'ui')
+  const row = JSON.parse(readFileSync(entryFile(dir), 'utf8').trim())
+  const newer = { ...row, text: 'new-text', updatedAt: new Date(Date.now() + 60_000).toISOString() }
+  writeFileSync(entryFile(dir), `${JSON.stringify(row)}\n${JSON.stringify(newer)}\n`, 'utf8')
+
+  s.load()
+  assert.equal(s.snapshot().entries.length, 1)
+  assert.equal(s.snapshot().entries[0].text, 'new-text', 'the newer duplicate must win')
+})
+
+// ---- 真实 spawn 的跨进程回归（上面几条用"直接改盘"构造状态，这几条用真进程）----
+test('spawn: an entry deleted by this process is not resurrected by a peer process', async () => {
+  const dir = newDir()
+  const me = new MemoryStore(dir)
+  me.load()
+  me.add({ text: 'victim', scope: 'global' }, 'ui')
+  me.add({ text: 'keeper', scope: 'global' }, 'ui')
+
+  await withPeer('hold-and-write', dir, async () => {
+    // 对手已 load（内存含 victim）。此刻本进程删掉它 —— 对手并不持有更新的时间戳。
+    const victim = me.snapshot().entries.find((e) => e.text === 'victim')
+    me.remove(victim.id)
+    assert.ok(!readFileSync(entryFile(dir), 'utf8').includes('victim'), 'precondition: victim gone from disk')
+  })
+
+  const texts = readFileSync(entryFile(dir), 'utf8').trim().split('\n').map((l) => JSON.parse(l).text)
+  assert.ok(!texts.includes('victim'), `a peer process resurrected a deleted entry: ${texts.join(' , ')}`)
+  assert.ok(texts.includes('peer-new'), 'the peer write itself must survive')
+  assert.ok(texts.includes('keeper'))
+})
+
+test('spawn: a read-only process sees a peer write without writing anything itself', async () => {
+  const dir = newDir()
+  const seeder = new MemoryStore(dir)
+  seeder.load()
+  seeder.add({ text: 'seeded', scope: 'global' }, 'ui')
+
+  const report = await withPeer('read-only', dir, async (ready) => {
+    const before = Number(readFileSync(ready, 'utf8'))
+    const writer = new MemoryStore(dir)
+    writer.load()
+    writer.add({ text: 'written-while-peer-waits', scope: 'global' }, 'ui')
+    return { before, writerRevision: writer.revision() }
+  })
+
+  const after = JSON.parse(readFileSync(`${join(dir, 'READY-read-only')}.after`, 'utf8'))
+  assert.equal(report.before, 1)
+  assert.equal(after.disk, 2, 'precondition: the peer write reached disk')
+  assert.equal(after.count, 2, 'a read-only process never saw the peer write')
+  assert.equal(after.revision, report.writerRevision, 'revision must match the on-disk state so the optimistic lock works across processes')
 })
 
 // 锁的获取在 Windows 上不只是 EEXIST 竞争：目标文件处于"删除挂起"态时 open 返回
